@@ -1,5 +1,5 @@
 import { Suspense } from "react";
-import { useRoutes, Routes, Route } from "react-router-dom";
+import { Routes, Route } from "react-router-dom";
 import Home from "./components/home";
 import Sales from "./components/sales";
 import Inventory from "./components/inventory";
@@ -18,12 +18,46 @@ import AuthLayout from "./components/auth/AuthLayout";
 import AuthGuard from "./components/auth/AuthGuard";
 import Header from "./components/layout/Header";
 import Sidebar from "./components/layout/Sidebar";
+import AuthProvider from "./components/auth/AuthProvider";
+
+import { useRoutes } from "react-router-dom";
 import routes from "tempo-routes";
+
+// Import tempo routes only if in Tempo environment
+const TempoRoutes = () => {
+  if (import.meta.env.VITE_TEMPO === "true") {
+    return useRoutes(routes);
+  }
+  return null;
+};
+
+function MainLayout({ children }) {
+  return (
+    <div className="min-h-screen bg-gray-100">
+      <div className="flex">
+        <Sidebar />
+        <div className="flex-1 flex flex-col">
+          <Header />
+          <main className="flex-1">{children}</main>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function App() {
   return (
-    <Suspense fallback={<p>Loading...</p>}>
-      <>
+    <AuthProvider>
+      <Suspense
+        fallback={
+          <div className="flex items-center justify-center h-screen">
+            Loading...
+          </div>
+        }
+      >
+        {/* Tempo routes for storyboards - rendered separately */}
+        <TempoRoutes />
+
         <Routes>
           {/* Auth routes - no authentication required */}
           <Route element={<AuthGuard requireAuth={false} />}>
@@ -40,152 +74,102 @@ function App() {
             <Route
               path="/"
               element={
-                <div className="min-h-screen bg-gray-100">
-                  <Header />
-                  <div className="flex">
-                    <Sidebar />
-                    <main className="flex-1">
-                      <Home />
-                    </main>
-                  </div>
-                </div>
+                <MainLayout>
+                  <Home />
+                </MainLayout>
               }
             />
             <Route
               path="/pos"
               element={
-                <div className="min-h-screen bg-gray-100">
-                  <Header />
-                  <div className="flex">
-                    <Sidebar />
-                    <main className="flex-1">
-                      <POS />
-                    </main>
-                  </div>
-                </div>
+                <MainLayout>
+                  <POS />
+                </MainLayout>
               }
             />
             <Route
               path="/penjualan"
               element={
-                <div className="min-h-screen bg-gray-100">
-                  <Header />
-                  <div className="flex">
-                    <Sidebar />
-                    <main className="flex-1">
-                      <Sales />
-                    </main>
-                  </div>
-                </div>
+                <MainLayout>
+                  <Sales />
+                </MainLayout>
               }
             />
             <Route
               path="/inventaris"
               element={
-                <div className="min-h-screen bg-gray-100">
-                  <Header />
-                  <div className="flex">
-                    <Sidebar />
-                    <main className="flex-1">
-                      <Inventory />
-                    </main>
-                  </div>
-                </div>
+                <MainLayout>
+                  <Inventory />
+                </MainLayout>
               }
             />
             <Route
               path="/gudang"
               element={
-                <div className="min-h-screen bg-gray-100">
-                  <Header />
-                  <div className="flex">
-                    <Sidebar />
-                    <main className="flex-1">
-                      <WarehouseManagement />
-                    </main>
-                  </div>
-                </div>
+                <MainLayout>
+                  <WarehouseManagement />
+                </MainLayout>
               }
             />
             <Route
               path="/toko"
               element={
-                <div className="min-h-screen bg-gray-100">
-                  <Header />
-                  <div className="flex">
-                    <Sidebar />
-                    <main className="flex-1">
-                      <StoreManagement />
-                    </main>
-                  </div>
-                </div>
+                <MainLayout>
+                  <StoreManagement />
+                </MainLayout>
               }
             />
             <Route
               path="/laporan"
               element={
-                <div className="min-h-screen bg-gray-100">
-                  <Header />
-                  <div className="flex">
-                    <Sidebar />
-                    <main className="flex-1">
-                      <Reports />
-                    </main>
-                  </div>
-                </div>
+                <MainLayout>
+                  <Reports />
+                </MainLayout>
               }
             />
             <Route
               path="/pengguna"
               element={
-                <div className="min-h-screen bg-gray-100">
-                  <Header />
-                  <div className="flex">
-                    <Sidebar />
-                    <main className="flex-1">
-                      <Users />
-                    </main>
-                  </div>
-                </div>
+                <MainLayout>
+                  <Users />
+                </MainLayout>
               }
             />
             <Route
               path="/pengaturan"
               element={
-                <div className="min-h-screen bg-gray-100">
-                  <Header />
-                  <div className="flex">
-                    <Sidebar />
-                    <main className="flex-1">
-                      <Settings />
-                    </main>
-                  </div>
-                </div>
+                <MainLayout>
+                  <Settings />
+                </MainLayout>
               }
             />
             <Route
               path="/profile"
               element={
-                <div className="min-h-screen bg-gray-100">
-                  <Header />
-                  <div className="flex">
-                    <Sidebar />
-                    <main className="flex-1">
-                      <Profile />
-                    </main>
-                  </div>
-                </div>
+                <MainLayout>
+                  <Profile />
+                </MainLayout>
               }
             />
           </Route>
 
+          {/* Tempo routes placeholder */}
           {import.meta.env.VITE_TEMPO === "true" && (
-            <Route path="/tempobook/*" />
+            <Route path="/tempobook/*" element={<div />} />
           )}
+
+          {/* Fallback route for 404 */}
+          <Route
+            path="*"
+            element={
+              <div className="flex items-center justify-center h-screen">
+                Halaman tidak ditemukan
+              </div>
+            }
+          />
         </Routes>
-        {import.meta.env.VITE_TEMPO === "true" && useRoutes(routes)}
-      </>
-    </Suspense>
+      </Suspense>
+    </AuthProvider>
   );
 }
 

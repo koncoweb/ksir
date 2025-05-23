@@ -20,8 +20,9 @@ export const useAuthContext = () => {
   return context;
 };
 
-export const AuthProvider = ({ children }: { children: ReactNode }) => {
+// Export as default function for Fast Refresh compatibility
+export default function AuthProvider({ children }: { children: ReactNode }) {
   const auth = useAuth();
 
   return <AuthContext.Provider value={auth}>{children}</AuthContext.Provider>;
-};
+}

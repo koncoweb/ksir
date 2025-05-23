@@ -1,5 +1,5 @@
 import React from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import {
   Home,
@@ -39,13 +39,14 @@ const Sidebar = ({
   userAvatar = "",
 }: SidebarProps) => {
   const { user, userProfile, signOut } = useAuth();
+  const navigate = useNavigate();
   const [userName, setUserName] = useState(propUserName || "User");
   const [userRole, setUserRole] = useState(propUserRole || "User");
   const [companyName, setCompanyName] = useState("Company");
 
   useEffect(() => {
     if (userProfile) {
-      setUserName(userProfile.email.split("@")[0] || "User");
+      setUserName(userProfile.email?.split("@")[0] || "User");
       setUserRole(userProfile.role || "User");
       setCompanyName(userProfile.company?.name || "Company");
     } else if (user?.email) {
@@ -58,11 +59,15 @@ const Sidebar = ({
   const handleSignOut = async () => {
     try {
       setIsLoggingOut(true);
+      console.log("Sidebar: Starting logout process");
+
       const success = await signOut();
+      console.log("Sidebar: Logout success status:", success);
 
       if (success) {
-        // Immediate redirect to login page after successful logout
-        window.location.href = "/login";
+        // Use React Router's navigate instead of window.location
+        console.log("Sidebar: Redirecting to login page");
+        navigate("/login");
       } else {
         console.error("Logout was not successful");
         setIsLoggingOut(false);

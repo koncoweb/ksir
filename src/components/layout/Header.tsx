@@ -1,5 +1,5 @@
 import React from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import {
   Bell,
   Calendar,
@@ -28,6 +28,7 @@ interface HeaderProps {
 const Header = ({ className = "" }: HeaderProps) => {
   const { user, userProfile, signOut } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
   const [userName, setUserName] = useState("User");
   const [userRole, setUserRole] = useState("User");
   const [companyName, setCompanyName] = useState("KasirSmart");
@@ -43,22 +44,33 @@ const Header = ({ className = "" }: HeaderProps) => {
     }
   }, [userProfile, user]);
 
+  // Handle route not found errors
+  useEffect(() => {
+    const currentPath = location.pathname;
+    if (currentPath && !user && !loading) {
+      navigate("/login");
+    }
+  }, [location.pathname, user, loading, navigate]);
+
   const handleSignOut = async () => {
     try {
       // Disable any UI interactions during logout
       setLoading(true);
+      console.log("Header: Starting logout process");
 
       const success = await signOut();
+      console.log("Header: Logout success status:", success);
 
       if (success) {
-        // Immediate redirect to login page after successful logout
-        window.location.href = "/login";
+        // Use React Router's navigate instead of window.location for SPA navigation
+        console.log("Header: Redirecting to login page");
+        navigate("/login");
       } else {
-        console.error("Logout was not successful");
+        console.error("Header: Logout was not successful");
         setLoading(false);
       }
     } catch (error) {
-      console.error("Logout failed:", error);
+      console.error("Header: Logout failed:", error);
       setLoading(false);
     }
   };
@@ -136,22 +148,18 @@ const Header = ({ className = "" }: HeaderProps) => {
           <DropdownMenuContent className="w-56" align="end">
             <DropdownMenuLabel>Akun Saya</DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem
-              onClick={() => (window.location.href = "/profile")}
-            >
+            <DropdownMenuItem onClick={() => navigate("/profile")}>
               <UserCircle className="mr-2 h-4 w-4" />
               <span>Profil</span>
             </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={() => (window.location.href = "/pengaturan")}
-            >
+            <DropdownMenuItem onClick={() => navigate("/pengaturan")}>
               <Settings className="mr-2 h-4 w-4" />
               <span>Pengaturan</span>
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem
               onClick={handleSignOut}
-              className="text-red-600"
+              className="text-red-600 cursor-pointer"
               disabled={loading}
             >
               <LogOut className="mr-2 h-4 w-4" />

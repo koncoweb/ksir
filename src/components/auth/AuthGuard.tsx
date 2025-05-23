@@ -1,63 +1,44 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect } from "react";
 import { Navigate, Outlet, useLocation } from "react-router-dom";
-import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/hooks/useAuth";
 import { Loader2 } from "lucide-react";
 
 interface AuthGuardProps {
   requireAuth?: boolean;
+  children?: React.ReactNode;
 }
 
-const AuthGuard: React.FC<AuthGuardProps> = ({ requireAuth = true }) => {
-  const [loading, setLoading] = useState(true);
-  const [user, setUser] = useState(null);
+export const AuthGuard = ({ requireAuth = true, children }: AuthGuardProps) => {
+  const { user, loading } = useAuth();
   const location = useLocation();
 
-  useEffect(() => {
-    const checkUser = async () => {
-      try {
-        const { data } = await supabase.auth.getSession();
-        setUser(data?.session?.user || null);
-      } catch (error) {
-        console.error("Error checking authentication:", error);
-        setUser(null);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    checkUser();
-
-    const { data: authListener } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
-        setUser(session?.user || null);
-        setLoading(false);
-      },
-    );
-
-    return () => {
-      authListener?.subscription.unsubscribe();
-    };
-  }, []);
-
+  // If still loading, show a loading spinner
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      <div className="flex items-center justify-center h-screen bg-gray-50">
+        <div className="text-center">
+          <Loader2 className="h-12 w-12 animate-spin text-primary mx-auto mb-4" />
+          <h2 className="text-xl font-bold mb-2">Memuat...</h2>
+          <p className="text-gray-500">Mohon tunggu sebentar</p>
+        </div>
       </div>
     );
   }
 
+  // If we require auth and don't have a user, redirect to login
   if (requireAuth && !user) {
-    // User is not authenticated but the route requires authentication
+    console.log("AuthGuard: No user found, redirecting to login");
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
+  // If we don't require auth (login page) but have a user, redirect to home
   if (!requireAuth && user) {
-    // User is authenticated but the route is for non-authenticated users only (like login page)
+    console.log("AuthGuard: User already logged in, redirecting to home");
     return <Navigate to="/" replace />;
   }
 
-  return <Outlet />;
+  // Otherwise, render the children or outlet
+  return children ? <>{children}</> : <Outlet />;
 };
 
 export default AuthGuard;

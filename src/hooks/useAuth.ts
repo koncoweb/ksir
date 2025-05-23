@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { supabase } from "@/lib/supabase";
 import { Session, User } from "@supabase/supabase-js";
 
@@ -14,54 +14,141 @@ interface UserProfile {
   };
 }
 
+// Create a cache to store user profiles across hook instances
+const userProfileCache = new Map<string, UserProfile>();
+
+// Track if we're already fetching a profile to prevent duplicate requests
+const pendingFetches = new Set<string>();
+
+// Create a singleton instance to track initialization
+let isInitialized = false;
+
 export function useAuth() {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Use a ref to track if this instance has been initialized
+  const isInstanceInitialized = useRef(false);
+
   const fetchUserProfile = async (userId: string) => {
     try {
-      const { data, error } = await supabase
+      // Check if we already have this profile in cache
+      if (userProfileCache.has(userId)) {
+        const cachedProfile = userProfileCache.get(userId);
+        console.log("Using cached user profile for ID:", userId);
+        setUserProfile(cachedProfile);
+        return;
+      }
+
+      // Check if we're already fetching this profile
+      if (pendingFetches.has(userId)) {
+        console.log("Profile fetch already in progress for ID:", userId);
+        return;
+      }
+
+      pendingFetches.add(userId);
+      console.log("Fetching user profile for ID:", userId);
+
+      // First try to get just the user data without the company join
+      const { data: userData, error: userError } = await supabase
         .from("users")
-        .select(
-          `
-          id,
-          email,
-          role,
-          company_id,
-          companies (
-            id,
-            name,
-            slug
-          )
-        `,
-        )
+        .select("id, email, role, company_id")
         .eq("id", userId)
         .single();
 
-      if (error) throw error;
+      if (userError) {
+        console.error("Error fetching user data:", userError);
+        pendingFetches.delete(userId);
+        throw userError;
+      }
 
-      setUserProfile({
-        ...data,
-        company: data.companies,
-      });
+      console.log("User data fetched:", userData);
+
+      // If we have user data, try to get the company data separately
+      if (userData && userData.company_id) {
+        const { data: companyData, error: companyError } = await supabase
+          .from("companies")
+          .select("id, name, slug")
+          .eq("id", userData.company_id)
+          .single();
+
+        if (!companyError && companyData) {
+          console.log("Company data fetched:", companyData);
+          const profileWithCompany = {
+            ...userData,
+            company: companyData,
+          };
+
+          // Cache the profile
+          userProfileCache.set(userId, profileWithCompany);
+          setUserProfile(profileWithCompany);
+          pendingFetches.delete(userId);
+          return;
+        } else if (companyError) {
+          console.error("Error fetching company data:", companyError);
+        }
+      }
+
+      // If we couldn't get company data or there was no company_id, just use the user data
+      const profileWithoutCompany = {
+        ...userData,
+        company: null,
+      };
+
+      // Cache the profile
+      userProfileCache.set(userId, profileWithoutCompany);
+      setUserProfile(profileWithoutCompany);
+      pendingFetches.delete(userId);
     } catch (error) {
       console.error("Error fetching user profile:", error);
       setUserProfile(null);
+      pendingFetches.delete(userId);
     }
   };
 
   useEffect(() => {
+    // Only log initialization once per instance
+    if (!isInstanceInitialized.current) {
+      console.log("useAuth hook initialized");
+      isInstanceInitialized.current = true;
+    }
+
+    // Skip initialization if already done globally
+    if (isInitialized) {
+      console.log(
+        "useAuth already initialized, skipping duplicate initialization",
+      );
+      return () => {};
+    }
+
+    // Mark as initialized globally
+    isInitialized = true;
+
     // Get initial session
     const getInitialSession = async () => {
       try {
-        const { data } = await supabase.auth.getSession();
+        console.log("Getting initial session...");
+        const { data, error } = await supabase.auth.getSession();
+
+        if (error) {
+          console.error("Error getting session:", error);
+          setLoading(false);
+          return;
+        }
+
+        console.log(
+          "Session data:",
+          data.session ? "Session exists" : "No session",
+        );
         setSession(data.session);
         setUser(data.session?.user ?? null);
 
         if (data.session?.user) {
           await fetchUserProfile(data.session.user.id);
+        } else {
+          console.log("No user in session");
         }
       } catch (error) {
         console.error("Error getting initial session:", error);
@@ -74,13 +161,16 @@ export function useAuth() {
 
     // Set up auth state listener
     const { data: authListener } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
+      async (event, session) => {
+        console.log("Auth state changed:", event);
         setSession(session);
         setUser(session?.user ?? null);
 
         if (session?.user) {
+          console.log("User in auth change:", session.user.email);
           await fetchUserProfile(session.user.id);
         } else {
+          console.log("No user in auth change");
           setUserProfile(null);
         }
 
@@ -89,15 +179,30 @@ export function useAuth() {
     );
 
     return () => {
+      console.log("Cleaning up auth listener");
       authListener?.subscription.unsubscribe();
+      // Don't reset isInitialized here, as we want to keep the singleton state
     };
   }, []);
 
   const signOut = async () => {
     try {
       setLoading(true);
+      console.log("Starting logout process...");
 
-      // Sign out from Supabase first
+      // Clear state first for better UX
+      setUserProfile(null);
+      setUser(null);
+      setSession(null);
+
+      // Clear the cache when signing out
+      userProfileCache.clear();
+      pendingFetches.clear();
+
+      // Reset initialization state
+      isInitialized = false;
+
+      // Sign out from Supabase
       const { error } = await supabase.auth.signOut();
 
       if (error) {
@@ -105,12 +210,9 @@ export function useAuth() {
         throw error;
       }
 
-      // Clear state after successful signout
-      setUserProfile(null);
-      setUser(null);
-      setSession(null);
+      console.log("Supabase signOut completed successfully");
 
-      // Clear any cached data or local storage if needed
+      // Clear any cached data or local storage
       try {
         // Clear specific Supabase items
         localStorage.removeItem("supabase.auth.token");
@@ -123,6 +225,7 @@ export function useAuth() {
             localStorage.removeItem(key);
           }
         }
+        console.log("Local storage cleared");
       } catch (storageError) {
         console.error("Error clearing local storage:", storageError);
         // Continue with logout even if storage clearing fails
@@ -151,6 +254,12 @@ export function useAuth() {
     }
   };
 
+  const clearCache = () => {
+    userProfileCache.clear();
+    pendingFetches.clear();
+    console.log("User profile cache cleared");
+  };
+
   return {
     user,
     session,
@@ -158,5 +267,6 @@ export function useAuth() {
     loading,
     signOut,
     refetchProfile: () => (user ? fetchUserProfile(user.id) : null),
+    clearCache,
   };
 }
