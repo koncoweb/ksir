@@ -1,9 +1,11 @@
-import React from "react";
+import React, { useState } from "react";
 import { CartItem } from "./types";
 import { Button } from "../ui/button";
-import { Trash2, Minus, Plus, X, Receipt, CreditCard } from "lucide-react";
+import { Trash2, Minus, Plus, X, Receipt, CreditCard, Tag } from "lucide-react";
 import { Separator } from "../ui/separator";
 import { ScrollArea } from "../ui/scroll-area";
+import { Switch } from "../ui/switch";
+import { Label } from "../ui/label";
 
 interface ShoppingCartProps {
   cartItems: CartItem[];
@@ -55,7 +57,7 @@ const ShoppingCart = ({
             <div className="p-4 space-y-3">
               {cartItems.map((item) => (
                 <div
-                  key={item.product.id}
+                  key={`${item.product.id}-${item.variation.id}`}
                   className="flex items-center space-x-3 bg-gray-50 p-3 rounded-lg"
                 >
                   <div className="h-12 w-12 rounded-md overflow-hidden bg-gray-200 flex-shrink-0">
@@ -68,10 +70,48 @@ const ShoppingCart = ({
                   <div className="flex-1 min-w-0">
                     <h3 className="font-medium text-sm truncate">
                       {item.product.name}
+                      {item.variation && item.variation.name !== "Default" && (
+                        <span className="ml-1 text-xs bg-gray-200 px-1.5 py-0.5 rounded">
+                          {item.variation.name}
+                        </span>
+                      )}
                     </h3>
-                    <p className="text-sm text-gray-500">
-                      {formatCurrency(item.product.price)}
-                    </p>
+                    <div className="flex items-center text-sm text-gray-500">
+                      <span>
+                        {formatCurrency(
+                          item.isWholesale && item.variation.wholesalePrice
+                            ? item.variation.wholesalePrice
+                            : item.variation.price,
+                        )}
+                      </span>
+                      {item.variation.wholesalePrice &&
+                        item.quantity >=
+                          (item.variation.minWholesaleQty || 1) && (
+                          <button
+                            className="ml-2 flex items-center text-xs text-blue-600"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const updatedItems = [...cartItems];
+                              const index = updatedItems.findIndex(
+                                (i) =>
+                                  i.product.id === item.product.id &&
+                                  i.variation.id === item.variation.id,
+                              );
+                              if (index !== -1) {
+                                updatedItems[index] = {
+                                  ...updatedItems[index],
+                                  isWholesale: !item.isWholesale,
+                                };
+                                // Update cart with the new items
+                                // This would need to be implemented in the parent component
+                              }
+                            }}
+                          >
+                            <Tag className="h-3 w-3 mr-1" />
+                            {item.isWholesale ? "Grosir" : "Retail"}
+                          </button>
+                        )}
+                    </div>
                   </div>
                   <div className="flex items-center space-x-2">
                     <Button

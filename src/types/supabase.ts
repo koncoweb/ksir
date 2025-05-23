@@ -100,6 +100,7 @@ export type Database = {
           product_id: string
           quantity: number
           updated_at: string | null
+          variation_id: string | null
         }
         Insert: {
           company_id: string
@@ -111,6 +112,7 @@ export type Database = {
           product_id: string
           quantity?: number
           updated_at?: string | null
+          variation_id?: string | null
         }
         Update: {
           company_id?: string
@@ -122,6 +124,7 @@ export type Database = {
           product_id?: string
           quantity?: number
           updated_at?: string | null
+          variation_id?: string | null
         }
         Relationships: [
           {
@@ -133,6 +136,140 @@ export type Database = {
           },
           {
             foreignKeyName: "inventory_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_variation_id_fkey"
+            columns: ["variation_id"]
+            isOneToOne: false
+            referencedRelation: "product_variations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      inventory_transactions: {
+        Row: {
+          company_id: string
+          created_at: string | null
+          created_by: string | null
+          id: string
+          location_name: string
+          location_type: string
+          notes: string | null
+          previous_quantity: number
+          product_id: string
+          quantity: number
+          reference_id: string | null
+          transaction_type: string
+          variation_id: string | null
+        }
+        Insert: {
+          company_id: string
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          location_name: string
+          location_type: string
+          notes?: string | null
+          previous_quantity: number
+          product_id: string
+          quantity: number
+          reference_id?: string | null
+          transaction_type: string
+          variation_id?: string | null
+        }
+        Update: {
+          company_id?: string
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          location_name?: string
+          location_type?: string
+          notes?: string | null
+          previous_quantity?: number
+          product_id?: string
+          quantity?: number
+          reference_id?: string | null
+          transaction_type?: string
+          variation_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inventory_transactions_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_transactions_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_transactions_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_transactions_variation_id_fkey"
+            columns: ["variation_id"]
+            isOneToOne: false
+            referencedRelation: "product_variations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      product_variations: {
+        Row: {
+          barcode: string | null
+          created_at: string | null
+          id: string
+          is_active: boolean | null
+          min_wholesale_qty: number | null
+          name: string
+          price: number
+          product_id: string
+          sku: string | null
+          updated_at: string | null
+          wholesale_price: number | null
+        }
+        Insert: {
+          barcode?: string | null
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          min_wholesale_qty?: number | null
+          name: string
+          price: number
+          product_id: string
+          sku?: string | null
+          updated_at?: string | null
+          wholesale_price?: number | null
+        }
+        Update: {
+          barcode?: string | null
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          min_wholesale_qty?: number | null
+          name?: string
+          price?: number
+          product_id?: string
+          sku?: string | null
+          updated_at?: string | null
+          wholesale_price?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_variations_product_id_fkey"
             columns: ["product_id"]
             isOneToOne: false
             referencedRelation: "products"

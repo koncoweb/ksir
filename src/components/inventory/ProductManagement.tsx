@@ -22,13 +22,34 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Plus, Edit, Trash2, Package } from "lucide-react";
+import {
+  Plus,
+  Edit,
+  Trash2,
+  Package,
+  PlusCircle,
+  MinusCircle,
+} from "lucide-react";
 import { Tables, TablesInsert, TablesUpdate } from "@/types/supabase";
 
 type Product = Tables<"products">;
 type Category = Tables<"categories">;
+type ProductVariation = Tables<"product_variations">;
 type ProductInsert = TablesInsert<"products">;
 type ProductUpdate = TablesUpdate<"products">;
+type ProductVariationInsert = TablesInsert<"product_variations">;
+type ProductVariationUpdate = TablesUpdate<"product_variations">;
+
+interface ProductVariationData {
+  id?: string;
+  name: string;
+  sku: string;
+  barcode: string;
+  price: number;
+  wholesale_price: number | null;
+  min_wholesale_qty: number | null;
+  is_active?: boolean;
+}
 
 interface ProductFormData {
   name: string;
@@ -39,12 +60,16 @@ interface ProductFormData {
   barcode: string;
   category_id: string;
   image_url: string;
+  variations: ProductVariationData[];
 }
 
 const ProductManagement = () => {
   const { userProfile } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [productVariations, setProductVariations] = useState<
+    Record<string, ProductVariation[]>
+  >({});
   const [loading, setLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
@@ -57,6 +82,16 @@ const ProductManagement = () => {
     barcode: "",
     category_id: "",
     image_url: "",
+    variations: [
+      {
+        name: "Default",
+        sku: "",
+        barcode: "",
+        price: 0,
+        wholesale_price: null,
+        min_wholesale_qty: null,
+      },
+    ],
   });
 
   // Check if user has permission to manage products
@@ -69,6 +104,12 @@ const ProductManagement = () => {
       fetchCategories();
     }
   }, [userProfile?.company_id]);
+
+  useEffect(() => {
+    if (products.length > 0) {
+      fetchProductVariations();
+    }
+  }, [products]);
 
   const fetchProducts = async () => {
     if (!userProfile?.company_id) return;
@@ -87,6 +128,34 @@ const ProductManagement = () => {
       console.error("Error fetching products:", error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchProductVariations = async () => {
+    if (!userProfile?.company_id || products.length === 0) return;
+
+    try {
+      const productIds = products.map((p) => p.id);
+      const { data, error } = await supabase
+        .from("product_variations")
+        .select("*")
+        .in("product_id", productIds)
+        .eq("is_active", true);
+
+      if (error) throw error;
+
+      // Group variations by product_id
+      const variationsByProduct: Record<string, ProductVariation[]> = {};
+      data?.forEach((variation) => {
+        if (!variationsByProduct[variation.product_id]) {
+          variationsByProduct[variation.product_id] = [];
+        }
+        variationsByProduct[variation.product_id].push(variation);
+      });
+
+      setProductVariations(variationsByProduct);
+    } catch (error) {
+      console.error("Error fetching product variations:", error);
     }
   };
 
@@ -113,10 +182,13 @@ const ProductManagement = () => {
     if (!userProfile?.company_id || !canManageProducts) return;
 
     try {
+      let productId: string;
+
       if (editingProduct) {
         // Update existing product
+        const { variations, ...productData } = formData;
         const updateData: ProductUpdate = {
-          ...formData,
+          ...productData,
           updated_at: new Date().toISOString(),
         };
 
@@ -127,16 +199,30 @@ const ProductManagement = () => {
           .eq("company_id", userProfile.company_id);
 
         if (error) throw error;
+        productId = editingProduct.id;
+
+        // Handle variations for existing product
+        await handleProductVariations(productId, variations);
       } else {
         // Create new product
+        const { variations, ...productData } = formData;
         const insertData: ProductInsert = {
-          ...formData,
+          ...productData,
           company_id: userProfile.company_id,
         };
 
-        const { error } = await supabase.from("products").insert(insertData);
+        const { data, error } = await supabase
+          .from("products")
+          .insert(insertData)
+          .select();
 
         if (error) throw error;
+        productId = data?.[0]?.id;
+
+        if (productId) {
+          // Create variations for new product
+          await handleProductVariations(productId, variations);
+        }
       }
 
       // Reset form and close dialog
@@ -149,8 +235,94 @@ const ProductManagement = () => {
     }
   };
 
-  const handleEdit = (product: Product) => {
+  const handleProductVariations = async (
+    productId: string,
+    variations: ProductVariationData[],
+  ) => {
+    // Get existing variations for this product
+    const { data: existingVariations, error: fetchError } = await supabase
+      .from("product_variations")
+      .select("*")
+      .eq("product_id", productId);
+
+    if (fetchError) throw fetchError;
+
+    const existingVariationMap = new Map();
+    existingVariations?.forEach((v) => existingVariationMap.set(v.id, v));
+
+    // Process each variation
+    for (const variation of variations) {
+      if (variation.id) {
+        // Update existing variation
+        const { id, ...updateData } = variation;
+        const { error } = await supabase
+          .from("product_variations")
+          .update(updateData)
+          .eq("id", id)
+          .eq("product_id", productId);
+
+        if (error) throw error;
+        existingVariationMap.delete(id);
+      } else {
+        // Create new variation
+        const { error } = await supabase.from("product_variations").insert({
+          ...variation,
+          product_id: productId,
+        });
+
+        if (error) throw error;
+      }
+    }
+
+    // Deactivate variations that were removed (mark as inactive instead of deleting)
+    for (const [id, _] of existingVariationMap) {
+      const { error } = await supabase
+        .from("product_variations")
+        .update({ is_active: false })
+        .eq("id", id);
+
+      if (error) throw error;
+    }
+  };
+
+  const handleEdit = async (product: Product) => {
     setEditingProduct(product);
+
+    // Get variations for this product
+    let variations = productVariations[product.id] || [];
+
+    // If no variations found, fetch them
+    if (variations.length === 0) {
+      const { data, error } = await supabase
+        .from("product_variations")
+        .select("*")
+        .eq("product_id", product.id)
+        .eq("is_active", true);
+
+      if (!error && data) {
+        variations = data;
+      }
+    }
+
+    // If still no variations, create a default one
+    if (variations.length === 0) {
+      variations = [
+        {
+          id: undefined,
+          name: "Default",
+          sku: product.sku || "",
+          barcode: product.barcode || "",
+          price: product.price,
+          wholesale_price: null,
+          min_wholesale_qty: null,
+          is_active: true,
+          product_id: product.id,
+          created_at: null,
+          updated_at: null,
+        },
+      ];
+    }
+
     setFormData({
       name: product.name,
       description: product.description || "",
@@ -160,7 +332,17 @@ const ProductManagement = () => {
       barcode: product.barcode || "",
       category_id: product.category_id || "",
       image_url: product.image_url || "",
+      variations: variations.map((v) => ({
+        id: v.id,
+        name: v.name,
+        sku: v.sku || "",
+        barcode: v.barcode || "",
+        price: v.price,
+        wholesale_price: v.wholesale_price,
+        min_wholesale_qty: v.min_wholesale_qty,
+      })),
     });
+
     setIsDialogOpen(true);
   };
 
@@ -198,8 +380,67 @@ const ProductManagement = () => {
       barcode: "",
       category_id: "",
       image_url: "",
+      variations: [
+        {
+          name: "Default",
+          sku: "",
+          barcode: "",
+          price: 0,
+          wholesale_price: null,
+          min_wholesale_qty: null,
+        },
+      ],
     });
     setEditingProduct(null);
+  };
+
+  const addVariation = () => {
+    setFormData({
+      ...formData,
+      variations: [
+        ...formData.variations,
+        {
+          name: "",
+          sku: "",
+          barcode: "",
+          price: formData.price,
+          wholesale_price: null,
+          min_wholesale_qty: null,
+        },
+      ],
+    });
+  };
+
+  const removeVariation = (index: number) => {
+    if (formData.variations.length <= 1) {
+      alert("Produk harus memiliki minimal satu variasi");
+      return;
+    }
+
+    const newVariations = [...formData.variations];
+    newVariations.splice(index, 1);
+
+    setFormData({
+      ...formData,
+      variations: newVariations,
+    });
+  };
+
+  const updateVariation = (
+    index: number,
+    field: keyof ProductVariationData,
+    value: any,
+  ) => {
+    const newVariations = [...formData.variations];
+    newVariations[index] = {
+      ...newVariations[index],
+      [field]: value,
+    };
+
+    setFormData({
+      ...formData,
+      variations: newVariations,
+    });
   };
 
   const handleDialogClose = () => {
@@ -282,64 +523,19 @@ const ProductManagement = () => {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="price">Harga Jual *</Label>
-                  <Input
-                    id="price"
-                    type="number"
-                    value={formData.price}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        price: Number(e.target.value),
-                      })
-                    }
-                    required
-                    min="0"
-                    step="100"
-                    placeholder="0"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="cost">Harga Beli</Label>
-                  <Input
-                    id="cost"
-                    type="number"
-                    value={formData.cost}
-                    onChange={(e) =>
-                      setFormData({ ...formData, cost: Number(e.target.value) })
-                    }
-                    min="0"
-                    step="100"
-                    placeholder="0"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="sku">SKU</Label>
-                  <Input
-                    id="sku"
-                    value={formData.sku}
-                    onChange={(e) =>
-                      setFormData({ ...formData, sku: e.target.value })
-                    }
-                    placeholder="SKU produk"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="barcode">Barcode</Label>
-                  <Input
-                    id="barcode"
-                    value={formData.barcode}
-                    onChange={(e) =>
-                      setFormData({ ...formData, barcode: e.target.value })
-                    }
-                    placeholder="Barcode produk"
-                  />
-                </div>
+              <div className="space-y-2">
+                <Label htmlFor="cost">Harga Beli</Label>
+                <Input
+                  id="cost"
+                  type="number"
+                  value={formData.cost}
+                  onChange={(e) =>
+                    setFormData({ ...formData, cost: Number(e.target.value) })
+                  }
+                  min="0"
+                  step="100"
+                  placeholder="0"
+                />
               </div>
 
               <div className="space-y-2">
@@ -374,6 +570,150 @@ const ProductManagement = () => {
                   placeholder="https://example.com/image.jpg"
                   type="url"
                 />
+              </div>
+
+              <div className="border-t pt-4 mt-4">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-medium">Variasi Produk</h3>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={addVariation}
+                  >
+                    <PlusCircle className="h-4 w-4 mr-2" />
+                    Tambah Variasi
+                  </Button>
+                </div>
+
+                {formData.variations.map((variation, index) => (
+                  <div
+                    key={index}
+                    className="border rounded-md p-4 mb-4 bg-gray-50"
+                  >
+                    <div className="flex items-center justify-between mb-3">
+                      <h4 className="font-medium">Variasi {index + 1}</h4>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => removeVariation(index)}
+                        className="text-red-500 hover:text-red-700"
+                      >
+                        <MinusCircle className="h-4 w-4" />
+                      </Button>
+                    </div>
+
+                    <div className="space-y-3">
+                      <div className="space-y-2">
+                        <Label htmlFor={`variation-name-${index}`}>
+                          Nama Variasi *
+                        </Label>
+                        <Input
+                          id={`variation-name-${index}`}
+                          value={variation.name}
+                          onChange={(e) =>
+                            updateVariation(index, "name", e.target.value)
+                          }
+                          required
+                          placeholder="Contoh: Regular, Large, dll"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor={`variation-sku-${index}`}>SKU</Label>
+                          <Input
+                            id={`variation-sku-${index}`}
+                            value={variation.sku}
+                            onChange={(e) =>
+                              updateVariation(index, "sku", e.target.value)
+                            }
+                            placeholder="SKU variasi"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor={`variation-barcode-${index}`}>
+                            Barcode
+                          </Label>
+                          <Input
+                            id={`variation-barcode-${index}`}
+                            value={variation.barcode}
+                            onChange={(e) =>
+                              updateVariation(index, "barcode", e.target.value)
+                            }
+                            placeholder="Barcode variasi"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor={`variation-price-${index}`}>
+                          Harga Jual *
+                        </Label>
+                        <Input
+                          id={`variation-price-${index}`}
+                          type="number"
+                          value={variation.price}
+                          onChange={(e) =>
+                            updateVariation(
+                              index,
+                              "price",
+                              Number(e.target.value),
+                            )
+                          }
+                          required
+                          min="0"
+                          step="100"
+                          placeholder="0"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor={`variation-wholesale-price-${index}`}>
+                            Harga Grosir
+                          </Label>
+                          <Input
+                            id={`variation-wholesale-price-${index}`}
+                            type="number"
+                            value={variation.wholesale_price || ""}
+                            onChange={(e) =>
+                              updateVariation(
+                                index,
+                                "wholesale_price",
+                                e.target.value ? Number(e.target.value) : null,
+                              )
+                            }
+                            min="0"
+                            step="100"
+                            placeholder="0"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor={`variation-min-qty-${index}`}>
+                            Min. Qty Grosir
+                          </Label>
+                          <Input
+                            id={`variation-min-qty-${index}`}
+                            type="number"
+                            value={variation.min_wholesale_qty || ""}
+                            onChange={(e) =>
+                              updateVariation(
+                                index,
+                                "min_wholesale_qty",
+                                e.target.value ? Number(e.target.value) : null,
+                              )
+                            }
+                            min="0"
+                            step="1"
+                            placeholder="10"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
 
               <DialogFooter>

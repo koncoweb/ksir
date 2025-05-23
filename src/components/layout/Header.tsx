@@ -31,6 +31,7 @@ const Header = ({ className = "" }: HeaderProps) => {
   const [userName, setUserName] = useState("User");
   const [userRole, setUserRole] = useState("User");
   const [companyName, setCompanyName] = useState("KasirSmart");
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (userProfile) {
@@ -44,13 +45,21 @@ const Header = ({ className = "" }: HeaderProps) => {
 
   const handleSignOut = async () => {
     try {
-      await signOut();
-      // Use a more reliable way to redirect after logout
-      setTimeout(() => {
+      // Disable any UI interactions during logout
+      setLoading(true);
+
+      const success = await signOut();
+
+      if (success) {
+        // Immediate redirect to login page after successful logout
         window.location.href = "/login";
-      }, 100);
+      } else {
+        console.error("Logout was not successful");
+        setLoading(false);
+      }
     } catch (error) {
       console.error("Logout failed:", error);
+      setLoading(false);
     }
   };
 
@@ -140,9 +149,13 @@ const Header = ({ className = "" }: HeaderProps) => {
               <span>Pengaturan</span>
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={handleSignOut} className="text-red-600">
+            <DropdownMenuItem
+              onClick={handleSignOut}
+              className="text-red-600"
+              disabled={loading}
+            >
               <LogOut className="mr-2 h-4 w-4" />
-              <span>Keluar</span>
+              <span>{loading ? "Keluar..." : "Keluar"}</span>
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

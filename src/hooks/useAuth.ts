@@ -97,12 +97,7 @@ export function useAuth() {
     try {
       setLoading(true);
 
-      // Clear user profile immediately for better UX
-      setUserProfile(null);
-      setUser(null);
-      setSession(null);
-
-      // Sign out from Supabase (this will also trigger the auth state change)
+      // Sign out from Supabase first
       const { error } = await supabase.auth.signOut();
 
       if (error) {
@@ -110,25 +105,45 @@ export function useAuth() {
         throw error;
       }
 
-      // Clear any cached data or local storage if needed
-      localStorage.removeItem("supabase.auth.token");
+      // Clear state after successful signout
+      setUserProfile(null);
+      setUser(null);
+      setSession(null);
 
-      // Force clear all auth-related storage
-      for (const key in localStorage) {
-        if (key.includes("supabase") || key.includes("auth")) {
-          localStorage.removeItem(key);
+      // Clear any cached data or local storage if needed
+      try {
+        // Clear specific Supabase items
+        localStorage.removeItem("supabase.auth.token");
+        localStorage.removeItem("supabase.auth.expires_at");
+        localStorage.removeItem("supabase.auth.refresh_token");
+
+        // Force clear all auth-related storage as a fallback
+        for (const key in localStorage) {
+          if (key.includes("supabase") || key.includes("auth")) {
+            localStorage.removeItem(key);
+          }
         }
+      } catch (storageError) {
+        console.error("Error clearing local storage:", storageError);
+        // Continue with logout even if storage clearing fails
       }
 
       return true; // Indicate successful logout
     } catch (error) {
       console.error("Error signing out:", error);
       // Re-fetch current state in case of error
-      const { data } = await supabase.auth.getSession();
-      setSession(data.session);
-      setUser(data.session?.user ?? null);
-      if (data.session?.user) {
-        await fetchUserProfile(data.session.user.id);
+      try {
+        const { data } = await supabase.auth.getSession();
+        setSession(data.session);
+        setUser(data.session?.user ?? null);
+        if (data.session?.user) {
+          await fetchUserProfile(data.session.user.id);
+        }
+      } catch (refreshError) {
+        console.error(
+          "Error refreshing session after failed logout:",
+          refreshError,
+        );
       }
       return false; // Indicate failed logout
     } finally {

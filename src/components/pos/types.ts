@@ -7,7 +7,10 @@ export interface Product {
   stock: number;
   description?: string;
   barcode?: string;
-  variations?: ProductVariation[];
+  variations: ProductVariation[];
+  cost?: number;
+  wholesalePrice?: number;
+  minWholesaleQty?: number;
 }
 
 export interface ProductVariation {
@@ -15,6 +18,10 @@ export interface ProductVariation {
   name: string;
   price: number;
   stock: number;
+  sku?: string;
+  barcode?: string;
+  wholesalePrice?: number;
+  minWholesaleQty?: number;
 }
 
 export interface Category {
@@ -27,6 +34,7 @@ export interface Category {
 export interface CartItem {
   product: Product;
   quantity: number;
-  variation?: ProductVariation;
+  variation: ProductVariation;
   notes?: string;
+  isWholesale?: boolean;
 }

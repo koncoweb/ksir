@@ -53,14 +53,23 @@ const Sidebar = ({
     }
   }, [userProfile, user, propUserName, propUserRole]);
 
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+
   const handleSignOut = async () => {
     try {
-      await signOut();
-      // Redirect to login page after successful logout
-      window.location.href = "/login";
+      setIsLoggingOut(true);
+      const success = await signOut();
+
+      if (success) {
+        // Immediate redirect to login page after successful logout
+        window.location.href = "/login";
+      } else {
+        console.error("Logout was not successful");
+        setIsLoggingOut(false);
+      }
     } catch (error) {
       console.error("Logout failed:", error);
-      // You could show a toast notification here
+      setIsLoggingOut(false);
     }
   };
   const location = useLocation();

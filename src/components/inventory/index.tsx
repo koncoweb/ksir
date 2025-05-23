@@ -1,4 +1,5 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import { supabase } from "@/lib/supabase";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 import Sidebar from "../layout/Sidebar";
 import ProductManagement from "./ProductManagement";
@@ -43,101 +44,109 @@ const Inventory = () => {
     setExpandedProducts(newExpanded);
   };
 
-  // Mock inventory data with location-specific stock
-  const inventoryItems = [
-    {
-      id: 1,
-      name: "Kopi Arabica",
-      category: "Minuman",
-      minStock: 10,
-      price: 15000,
-      variations: [
-        {
-          id: 1,
-          name: "Regular",
-          locations: [
-            { type: "warehouse", name: "Gudang Utama Jakarta", stock: 15 },
-            { type: "store", name: "Toko Pusat Jakarta", stock: 8 },
-            { type: "store", name: "Cabang Bandung", stock: 2 },
-          ],
-        },
-        {
-          id: 2,
-          name: "Premium",
-          locations: [
-            { type: "warehouse", name: "Gudang Utama Jakarta", stock: 20 },
-            { type: "store", name: "Toko Pusat Jakarta", stock: 5 },
-          ],
-        },
-      ],
-    },
-    {
-      id: 2,
-      name: "Gula Aren",
-      category: "Bahan Baku",
-      minStock: 15,
-      price: 25000,
-      variations: [
-        {
-          id: 3,
-          name: "1kg",
-          locations: [
-            { type: "warehouse", name: "Gudang Utama Jakarta", stock: 5 },
-            { type: "store", name: "Toko Pusat Jakarta", stock: 3 },
-          ],
-        },
-      ],
-    },
-    {
-      id: 3,
-      name: "Susu UHT",
-      category: "Bahan Baku",
-      minStock: 20,
-      price: 18000,
-      variations: [
-        {
-          id: 4,
-          name: "1 Liter",
-          locations: [
-            { type: "warehouse", name: "Gudang Utama Jakarta", stock: 8 },
-            { type: "store", name: "Cabang Bandung", stock: 4 },
-          ],
-        },
-      ],
-    },
-    {
-      id: 4,
-      name: "Nasi Goreng",
-      category: "Makanan",
-      minStock: 5,
-      price: 25000,
-      variations: [
-        {
-          id: 5,
-          name: "Porsi Regular",
-          locations: [],
-        },
-      ],
-    },
-    {
-      id: 5,
-      name: "Es Teh Manis",
-      category: "Minuman",
-      minStock: 10,
-      price: 8000,
-      variations: [
-        {
-          id: 6,
-          name: "Gelas",
-          locations: [
-            { type: "warehouse", name: "Gudang Utama Jakarta", stock: 20 },
-            { type: "store", name: "Toko Pusat Jakarta", stock: 8 },
-            { type: "store", name: "Outlet Surabaya", stock: 2 },
-          ],
-        },
-      ],
-    },
-  ];
+  const [inventoryItems, setInventoryItems] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    if (userProfile?.company_id) {
+      fetchInventoryData();
+    }
+  }, [userProfile?.company_id]);
+
+  const fetchInventoryData = async () => {
+    if (!userProfile?.company_id) return;
+
+    try {
+      setIsLoading(true);
+
+      // Fetch products
+      const { data: products, error: productsError } = await supabase
+        .from("products")
+        .select("*, categories(name)")
+        .eq("company_id", userProfile.company_id)
+        .eq("is_active", true);
+
+      if (productsError) throw productsError;
+
+      // Fetch product variations
+      const productIds = products.map((p) => p.id);
+      const { data: variations, error: variationsError } = await supabase
+        .from("product_variations")
+        .select("*")
+        .in("product_id", productIds)
+        .eq("is_active", true);
+
+      if (variationsError) throw variationsError;
+
+      // Group variations by product_id
+      const variationsByProduct = {};
+      variations.forEach((v) => {
+        if (!variationsByProduct[v.product_id]) {
+          variationsByProduct[v.product_id] = [];
+        }
+        variationsByProduct[v.product_id].push(v);
+      });
+
+      // Fetch inventory data
+      const variationIds = variations.map((v) => v.id);
+      const { data: inventory, error: inventoryError } = await supabase
+        .from("inventory")
+        .select("*")
+        .in("variation_id", variationIds)
+        .eq("company_id", userProfile.company_id);
+
+      if (inventoryError) throw inventoryError;
+
+      // Group inventory by variation_id
+      const inventoryByVariation = {};
+      inventory.forEach((item) => {
+        if (!inventoryByVariation[item.variation_id]) {
+          inventoryByVariation[item.variation_id] = [];
+        }
+        inventoryByVariation[item.variation_id].push(item);
+      });
+
+      // Build the inventory items structure
+      const items = products.map((product) => {
+        const productVariations = variationsByProduct[product.id] || [];
+
+        // If no variations found, create a default one
+        if (productVariations.length === 0) {
+          productVariations.push({
+            id: `default-${product.id}`,
+            name: "Default",
+            price: product.price,
+            product_id: product.id,
+          });
+        }
+
+        return {
+          id: product.id,
+          name: product.name,
+          category: product.categories?.name || "Tanpa Kategori",
+          minStock: 10, // Default value, should be customizable per product
+          price: product.price,
+          variations: productVariations.map((variation) => ({
+            id: variation.id,
+            name: variation.name,
+            locations: inventoryByVariation[variation.id]
+              ? inventoryByVariation[variation.id].map((inv) => ({
+                  type: inv.location_type,
+                  name: inv.location_name,
+                  stock: inv.quantity,
+                }))
+              : [],
+          })),
+        };
+      });
+
+      setInventoryItems(items);
+    } catch (error) {
+      console.error("Error fetching inventory data:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   // Calculate total stock for each product
   const getProductTotalStock = (product) => {
