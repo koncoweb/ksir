@@ -123,7 +123,9 @@ const Inventory = () => {
         return {
           id: product.id,
           name: product.name,
-          category: product.categories?.name || "Tanpa Kategori",
+          category: Array.isArray(product.categories) && product.categories.length > 0
+  ? ((product.categories[0] as { name: string }).name || "Tanpa Kategori")
+  : "Tanpa Kategori",
           minStock: 10, // Default value, should be customizable per product
           price: product.price,
           variations: productVariations.map((variation) => ({
@@ -250,7 +252,10 @@ const Inventory = () => {
               </div>
 
               <div className="space-y-4">
-                {inventoryItems.map((item) => {
+  {!isLoading && inventoryItems.length === 0 ? (
+    <div className="text-center text-gray-500 py-8">No product</div>
+  ) : (
+    inventoryItems.map((item) => {
                   const stockStatus = getStockStatus(item);
                   const totalStock = getProductTotalStock(item);
 
@@ -383,7 +388,9 @@ const Inventory = () => {
                       </CardContent>
                     </Card>
                   );
-                })}
+                  })
+    )
+  }
               </div>
             </CardContent>
           </Card>

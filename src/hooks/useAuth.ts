@@ -27,6 +27,7 @@ export function useAuth() {
   const [session, setSession] = useState<Session | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [initialized, setInitialized] = useState(false);
 
   // Use a ref to track if this instance has been initialized
   const isInstanceInitialized = useRef(false);
@@ -91,13 +92,14 @@ export function useAuth() {
   };
 
   useEffect(() => {
-    // Only log initialization once per instance (optional)
     if (!isInstanceInitialized.current) {
-      // console.log("useAuth hook initialized");
+      console.log("useAuth hook initialized");
       isInstanceInitialized.current = true;
     }
 
-    // Get initial session once
+    let unsub: any;
+    let authStateFired = false;
+
     const getInitialSession = async () => {
       try {
         const { data, error } = await supabase.auth.getSession();
@@ -110,24 +112,29 @@ export function useAuth() {
         setUser(data.session?.user ?? null);
       } catch (error) {
         console.error("Error getting initial session:", error);
-      } finally {
-        setLoading(false);
       }
     };
+
     getInitialSession();
 
-    // Set up auth state listener
-    const { data: authListener } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
-        setSession(session);
-        setUser(session?.user ?? null);
+    unsub = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+      setUser(session?.user ?? null);
+      if (!authStateFired) {
         setLoading(false);
-      },
-    );
+        setInitialized(true);
+        authStateFired = true;
+      }
+    });
+
     return () => {
-      authListener?.subscription.unsubscribe();
+      if (unsub && unsub.subscription) unsub.subscription.unsubscribe();
     };
   }, []);
+
+  useEffect(() => {
+    console.log("[useAuth] loading:", loading, "user:", user);
+  }, [loading, user]);
 
   // Only fetch user profile when user id changes
   useEffect(() => {

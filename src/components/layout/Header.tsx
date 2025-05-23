@@ -44,13 +44,25 @@ const Header = ({ className = "" }: HeaderProps) => {
     }
   }, [userProfile, user]);
 
-  // Handle route not found errors
+  // TEMPORARILY DISABLED to prevent redirect loops
+  // useEffect(() => {
+  //   const currentPath = location.pathname;
+  //   // Only redirect to login if:
+  //   // 1. Not loading (auth state is determined)
+  //   // 2. No user is authenticated
+  //   // 3. Not already on the login page or other auth pages
+  //   const isAuthPath = ["/login", "/register", "/reset-password", "/auth/callback"].includes(currentPath);
+    
+  //   if (!user && !loading && !isAuthPath) {
+  //     console.log("Header: Redirecting to login because user is not authenticated");
+  //     navigate("/login");
+  //   }
+  // }, [user, loading, navigate, location.pathname]);
+  
+  // Instead, just log the auth state without redirecting
   useEffect(() => {
-    const currentPath = location.pathname;
-    if (currentPath && !user && !loading) {
-      navigate("/login");
-    }
-  }, [location.pathname, user, loading, navigate]);
+    console.log(`Header: Auth state - user=${user ? 'exists' : 'null'}, loading=${loading}, path=${location.pathname}`);
+  }, [user, loading, location.pathname]);
 
   const handleSignOut = async () => {
     try {

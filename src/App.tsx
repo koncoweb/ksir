@@ -32,6 +32,7 @@ const TempoRoutes = () => {
 };
 
 function MainLayout({ children }) {
+  console.log("MainLayout rendered");
   return (
     <div className="min-h-screen bg-gray-100">
       <div className="flex">
@@ -46,6 +47,7 @@ function MainLayout({ children }) {
 }
 
 function App() {
+  console.log("App component rendered");
   return (
     <AuthProvider>
       <Suspense
