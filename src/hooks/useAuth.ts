@@ -20,8 +20,7 @@ const userProfileCache = new Map<string, UserProfile>();
 // Track if we're already fetching a profile to prevent duplicate requests
 const pendingFetches = new Set<string>();
 
-// Create a singleton instance to track initialization
-let isInitialized = false;
+// No need for global initialization flags. Supabase client is a singleton via import.
 
 export function useAuth() {
   const [user, setUser] = useState<User | null>(null);
@@ -36,20 +35,9 @@ export function useAuth() {
     try {
       // Check if we already have this profile in cache
       if (userProfileCache.has(userId)) {
-        const cachedProfile = userProfileCache.get(userId);
-        console.log("Using cached user profile for ID:", userId);
-        setUserProfile(cachedProfile);
+        setUserProfile(userProfileCache.get(userId)!);
         return;
       }
-
-      // Check if we're already fetching this profile
-      if (pendingFetches.has(userId)) {
-        console.log("Profile fetch already in progress for ID:", userId);
-        return;
-      }
-
-      pendingFetches.add(userId);
-      console.log("Fetching user profile for ID:", userId);
 
       // First try to get just the user data without the company join
       const { data: userData, error: userError } = await supabase
@@ -59,12 +47,10 @@ export function useAuth() {
         .single();
 
       if (userError) {
+        // If you see error code 42P17 (infinite recursion), fix your Supabase RLS policy for 'users' table.
         console.error("Error fetching user data:", userError);
-        pendingFetches.delete(userId);
         throw userError;
       }
-
-      console.log("User data fetched:", userData);
 
       // If we have user data, try to get the company data separately
       if (userData && userData.company_id) {
@@ -75,7 +61,6 @@ export function useAuth() {
           .single();
 
         if (!companyError && companyData) {
-          console.log("Company data fetched:", companyData);
           const profileWithCompany = {
             ...userData,
             company: companyData,
@@ -84,7 +69,6 @@ export function useAuth() {
           // Cache the profile
           userProfileCache.set(userId, profileWithCompany);
           setUserProfile(profileWithCompany);
-          pendingFetches.delete(userId);
           return;
         } else if (companyError) {
           console.error("Error fetching company data:", companyError);
@@ -100,90 +84,59 @@ export function useAuth() {
       // Cache the profile
       userProfileCache.set(userId, profileWithoutCompany);
       setUserProfile(profileWithoutCompany);
-      pendingFetches.delete(userId);
     } catch (error) {
       console.error("Error fetching user profile:", error);
       setUserProfile(null);
-      pendingFetches.delete(userId);
     }
   };
 
   useEffect(() => {
-    // Only log initialization once per instance
+    // Only log initialization once per instance (optional)
     if (!isInstanceInitialized.current) {
-      console.log("useAuth hook initialized");
+      // console.log("useAuth hook initialized");
       isInstanceInitialized.current = true;
     }
 
-    // Skip initialization if already done globally
-    if (isInitialized) {
-      console.log(
-        "useAuth already initialized, skipping duplicate initialization",
-      );
-      return () => {};
-    }
-
-    // Mark as initialized globally
-    isInitialized = true;
-
-    // Get initial session
+    // Get initial session once
     const getInitialSession = async () => {
       try {
-        console.log("Getting initial session...");
         const { data, error } = await supabase.auth.getSession();
-
         if (error) {
           console.error("Error getting session:", error);
           setLoading(false);
           return;
         }
-
-        console.log(
-          "Session data:",
-          data.session ? "Session exists" : "No session",
-        );
         setSession(data.session);
         setUser(data.session?.user ?? null);
-
-        if (data.session?.user) {
-          await fetchUserProfile(data.session.user.id);
-        } else {
-          console.log("No user in session");
-        }
       } catch (error) {
         console.error("Error getting initial session:", error);
       } finally {
         setLoading(false);
       }
     };
-
     getInitialSession();
 
     // Set up auth state listener
     const { data: authListener } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        console.log("Auth state changed:", event);
+      (_event, session) => {
         setSession(session);
         setUser(session?.user ?? null);
-
-        if (session?.user) {
-          console.log("User in auth change:", session.user.email);
-          await fetchUserProfile(session.user.id);
-        } else {
-          console.log("No user in auth change");
-          setUserProfile(null);
-        }
-
         setLoading(false);
       },
     );
-
     return () => {
-      console.log("Cleaning up auth listener");
       authListener?.subscription.unsubscribe();
-      // Don't reset isInitialized here, as we want to keep the singleton state
     };
   }, []);
+
+  // Only fetch user profile when user id changes
+  useEffect(() => {
+    if (user?.id) {
+      fetchUserProfile(user.id);
+    } else {
+      setUserProfile(null);
+    }
+  }, [user?.id]);
 
   const signOut = async () => {
     try {
@@ -199,8 +152,7 @@ export function useAuth() {
       userProfileCache.clear();
       pendingFetches.clear();
 
-      // Reset initialization state
-      isInitialized = false;
+      // No global initialization state to reset
 
       // Sign out from Supabase
       const { error } = await supabase.auth.signOut();

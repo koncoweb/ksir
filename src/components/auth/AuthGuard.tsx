@@ -1,5 +1,5 @@
 import React, { useEffect } from "react";
-import { Navigate, Outlet, useLocation } from "react-router-dom";
+import { useNavigate, useLocation, Outlet } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { Loader2 } from "lucide-react";
 
@@ -11,8 +11,20 @@ interface AuthGuardProps {
 export const AuthGuard = ({ requireAuth = true, children }: AuthGuardProps) => {
   const { user, loading } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
 
-  // If still loading, show a loading spinner
+  useEffect(() => {
+    if (!loading) {
+      if (requireAuth && !user) {
+        // Redirect to login if not authenticated
+        navigate("/login", { state: { from: location }, replace: true });
+      } else if (!requireAuth && user && location.pathname !== "/") {
+        // Redirect to home if already logged in and not on home
+        navigate("/", { replace: true });
+      }
+    }
+  }, [user, loading, requireAuth, location, navigate]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-screen bg-gray-50">
@@ -25,19 +37,11 @@ export const AuthGuard = ({ requireAuth = true, children }: AuthGuardProps) => {
     );
   }
 
-  // If we require auth and don't have a user, redirect to login
-  if (requireAuth && !user) {
-    console.log("AuthGuard: No user found, redirecting to login");
-    return <Navigate to="/login" state={{ from: location }} replace />;
+  // Only render children/outlet if not redirecting
+  if ((requireAuth && !user) || (!requireAuth && user && location.pathname !== "/")) {
+    return null;
   }
 
-  // If we don't require auth (login page) but have a user, redirect to home
-  if (!requireAuth && user) {
-    console.log("AuthGuard: User already logged in, redirecting to home");
-    return <Navigate to="/" replace />;
-  }
-
-  // Otherwise, render the children or outlet
   return children ? <>{children}</> : <Outlet />;
 };
 
